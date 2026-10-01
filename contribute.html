@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<!--
+  Alliance Credibility — expert contribution form (Phase 2; spec: release/CONTRIBUTION-SPEC.md).
+
+  A GENERIC RENDERER. Every word of survey text (question wording, preamble, instructions,
+  which questions each alliance gets, the member each question is about) comes from
+  instrument.json, generated in R by release/contributions/build-instrument.R from the
+  original survey apps. To change wording, change the R file and rebuild — never this page.
+
+  What it sends: what the expert clicked (question id, member, year, level) plus identity.
+  It never computes cred_source / cred_recip; clean-expert-data.R does that for every wave.
+
+  Modes:  contribute.html?atopid=3215        the form for one alliance (linked from the dashboard)
+          contribute.html                    pick an alliance
+          contribute.html?atopid=3215&dev=1  test mode: shows the payload instead of sending it
+
+  Settings you fill in before go-live are in CONFIG below.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<script src="redirect.js"></script>
+<title>Contribute alliance credibility ratings</title>
+<style>
+  :root { color-scheme: light; --fg:#1d1d1f; --muted:#5f6368; --line:#d9dce1; --soft:#f5f7fa;
+          --accent:#1f5fa8; --accent-soft:#e8f0fb; --warn:#8a5a00; --warn-soft:#fff4e0;
+          --bad:#a3261c; --bad-soft:#fdecea; --good:#1e6b34; --good-soft:#e7f5ec; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#fff; color:var(--fg);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+  a { color: var(--accent); }
+  h1 { font-size: 1.55rem; line-height: 1.25; margin: .6rem 0 .2rem; }
+  .years { color: var(--muted); margin: 0 0 1rem; }
+  .preamble p { margin: .55rem 0; }
+  .instructions { font-weight: 600; background: var(--soft); border-left: 4px solid var(--accent);
+                  padding: .75rem 1rem; margin: 1.25rem 0 .4rem; }
+  .ui-help { color: var(--muted); font-size: .9rem; margin: 0 0 1rem; }
+  fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; margin: 1.25rem 0; }
+  legend { font-weight: 700; padding: 0 .4rem; }
+  ol.options { margin: .2rem 0 .8rem; padding-left: 1.2rem; font-size: .93rem; }
+  ol.options li { margin: .2rem 0; }
+  /* scroll-padding keeps rows that are scrolled/focused into view below the sticky header
+     (set precisely from the real header height in padGrids(); this is the fallback) */
+  .grid-wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
+               scroll-padding-top: 4.5rem; }
+  table.grid { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  table.grid th, table.grid td { padding: .35rem .5rem; border-bottom: 1px solid var(--line);
+                                 text-align: center; }
+  table.grid thead th { position: sticky; top: 0; background: var(--soft); z-index: 1;
+                        font-weight: 600; vertical-align: bottom; }
+  table.grid th.year, table.grid td.year { text-align: left; white-space: nowrap; }
+  table.grid tr.start { background: var(--accent-soft); }
+  table.grid tr.marked td.year { font-weight: 700; }
+  .req { color: var(--bad); font-size: .78rem; margin-left: .35rem; }
+  input[type=radio] { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+  label.field { display: block; margin: .6rem 0; }
+  label.field span { display: block; font-weight: 600; margin-bottom: .2rem; }
+  input[type=text], input[type=email], textarea { width: 100%; max-width: 32rem; font: inherit;
+         padding: .45rem .55rem; border: 1px solid var(--line); border-radius: 6px; }
+  textarea { max-width: 100%; min-height: 4.5rem; }
+  .check { display: flex; gap: .55rem; align-items: flex-start; margin: .6rem 0; }
+  .check input { margin-top: .3rem; }
+  .draft-badge { display: inline-block; background: var(--warn-soft); color: var(--warn);
+                 border: 1px solid #e9c98c; border-radius: 6px; font-size: .8rem; font-weight: 700;
+                 padding: .1rem .45rem; margin-bottom: .4rem; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  button { font: inherit; font-weight: 600; padding: .6rem 1.2rem; border-radius: 8px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+  button.secondary { background: #fff; color: var(--accent); }
+  button:disabled { opacity: .55; cursor: default; }
+  .notice { border-radius: 8px; padding: .8rem 1rem; margin: 1rem 0; }
+  .notice.bad { background: var(--bad-soft); color: var(--bad); }
+  .notice.good { background: var(--good-soft); color: var(--good); }
+  .notice.warn { background: var(--warn-soft); color: var(--warn); }
+  .notice ul { margin: .3rem 0 0; padding-left: 1.2rem; }
+  pre { background: var(--soft); padding: .8rem; border-radius: 8px; overflow: auto; font-size: .8rem; }
+  .picker input { width: 100%; max-width: 32rem; }
+  .picker ul { list-style: none; padding: 0; margin: .6rem 0; }
+  .picker li { padding: .3rem 0; border-bottom: 1px solid var(--line); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+
+<script>
+"use strict";
+
+// ---- settings to fill in before go-live (spec §9, phases 3 and 5) ------------------------
+const CONFIG = {
+  instrumentUrl: "instrument.json",  // copied next to this page by dashboard/build.sh
+  apiUrl: "api/submit",              // Cloudflare Pages Function (relative: host-agnostic)
+  turnstileSiteKey: "0x4AAAAAAFKkKtJcz86cwJXy", // public site key; the secret lives only in Cloudflare
+  contactEmail: "Joshua_Alley@baylor.edu", // shown if saving fails, and for withdrawal requests
+  consentApproved: false             // Phase 5. Set true only after ethics sign-off
+};
+
+const params = new URLSearchParams(location.search);
+const DEV = params.get("dev") === "1";
+const app = document.getElementById("app");
+let INSTR = null, AL = null;
+
+// ---- tiny DOM helper: text is always set via textContent, never parsed as HTML ------------
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "text") n.textContent = v;
+    else if (k === "class") n.className = v;
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c !== null && c !== undefined && c !== false)
+    n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+
+function fatal(msg) { app.replaceChildren(el("div", {class: "notice bad", text: msg})); }
+
+init();
+
+async function init() {
+  try {
+    const r = await fetch(CONFIG.instrumentUrl, {cache: "no-cache"});
+    if (!r.ok) throw new Error(r.status);
+    INSTR = await r.json();
+  } catch (e) {
+    fatal("The survey could not be loaded. Please try again later.");
+    return;
+  }
+  const id = Number(params.get("atopid"));
+  AL = INSTR.alliances.find(a => a.atopid === id) || null;
+  if (AL) renderForm(); else renderPicker(params.has("atopid") ? id : null);
+}
+
+// ---- no (or unknown) alliance: let the expert pick one -------------------------------------
+function renderPicker(missingId) {
+  const list = el("ul");
+  const input = el("input", {type: "text", placeholder: "Search by alliance or member…",
+                             "aria-label": "Search alliances"});
+  const all = INSTR.alliances.slice().sort((a, b) => a.name.localeCompare(b.name));
+  function draw() {
+    const q = input.value.trim().toLowerCase();
+    list.replaceChildren(...all
+      .filter(a => !q || a.name.toLowerCase().includes(q) ||
+                   a.questions.some(x => x.country.toLowerCase().includes(q)))
+      .slice(0, 60)
+      .map(a => el("li", {}, el("a", {href: `?atopid=${a.atopid}${DEV ? "&dev=1" : ""}`, text: a.name}),
+                         el("span", {class: "muted", text: `  ${a.begyr}–${a.endyr}`}))));
+  }
+  input.addEventListener("input", draw);
+  draw();
+  app.replaceChildren(
+    el("p", {}, el("a", {href: "index.html", text: "← Alliance credibility dashboard"})),
+    el("h1", {text: "Contribute alliance credibility ratings"}),
+    missingId !== null ? el("div", {class: "notice warn",
+      text: `Alliance ${missingId} can't take contributions yet.`}) : null,
+    el("div", {class: "picker"}, input, list));
+}
+
+// ---- the form ------------------------------------------------------------------------------
+function renderForm() {
+  const years = AL.years, start = Math.min(...years);
+  const texts = INSTR.texts;
+
+  const preamble = el("div", {class: "preamble"},
+    el("p", {text: AL.intro_para}),
+    ...texts.preamble[AL.preamble].map(t => el("p", {text: t})),
+    AL.members_line ? [el("p", {text: "Members include:"}), el("p", {text: AL.members_line})] : null);
+
+  const questions = AL.questions.map(q => {
+    const head = el("tr", {}, el("th", {class: "year", scope: "col", text: "Year"}),
+      ...q.options.map(o => el("th", {scope: "col", text: o.split(":")[0]})));
+    const body = el("tbody", {}, ...years.map(y => {
+      const row = el("tr", {class: y === start ? "start" : null, "data-year": y},
+        el("td", {class: "year"}, String(y),
+           y === start ? el("span", {class: "req", text: "start year – required"}) : null),
+        ...q.options.map((o, k) => el("td", {},
+          el("input", {type: "radio", name: `${q.id}_${y}`, value: k + 1,
+                       "aria-label": `${y}: ${o}`}))));
+      return row;
+    }));
+    return el("fieldset", {"data-q": q.id},
+      el("legend", {text: q.heading}),
+      el("ol", {class: "options"}, ...q.options.map(o => el("li", {text: o}))),
+      el("div", {class: "grid-wrap"}, el("table", {class: "grid"},
+        el("caption", {class: "muted", text: q.row_label}), el("thead", {}, head), body)));
+  });
+
+  const consentText = "I consent to the use of my ratings in the Alliance Credibility project's " +
+    "research and public data releases. My name, institution and email are used only to verify " +
+    "my submission and are never published unless I opt in to be credited below. I can ask for " +
+    "my submission to be withdrawn at any time before it is included in a release" +
+    (CONFIG.contactEmail ? ` by emailing ${CONFIG.contactEmail}.` : ".");
+
+  const identity = el("fieldset", {},
+    el("legend", {text: "About you"}),
+    el("label", {class: "field"}, el("span", {text: "Name"}),
+      el("input", {type: "text", id: "c_name", autocomplete: "name", required: true})),
+    el("label", {class: "field"}, el("span", {text: "Institution"}),
+      el("input", {type: "text", id: "c_inst", autocomplete: "organization", required: true})),
+    el("label", {class: "field"}, el("span", {text: "Institutional email (for verification only; never published)"}),
+      el("input", {type: "email", id: "c_email", autocomplete: "email", required: true})),
+    el("div", {class: "check"}, el("input", {type: "checkbox", id: "c_credit"}),
+      el("label", {for: "c_credit", text: "Credit me: list my name and institution among contributors on the dashboard."})),
+    el("label", {class: "field"}, el("span", {text: "Comments or sources (optional)"}),
+      el("textarea", {id: "c_comment"})),
+    CONFIG.consentApproved ? null :
+      el("div", {class: "draft-badge", text: "DRAFT consent text — pending ethics review"}),
+    el("div", {class: "check"}, el("input", {type: "checkbox", id: "c_consent", required: true}),
+      el("label", {for: "c_consent", text: consentText})),
+    // honeypot: invisible to people, tempting to bots; the server drops anything that fills it
+    el("div", {class: "hp", "aria-hidden": "true"},
+      el("label", {text: "Website"}, el("input", {type: "text", id: "c_website", tabindex: "-1", autocomplete: "off"}))));
+
+  const turnstile = CONFIG.turnstileSiteKey
+    ? el("div", {class: "cf-turnstile", "data-sitekey": CONFIG.turnstileSiteKey}) : null;
+  if (turnstile) document.head.append(el("script", {
+    src: "https://challenges.cloudflare.com/turnstile/v0/api.js", async: true, defer: true}));
+
+  const status = el("div", {id: "status", "aria-live": "polite"});
+  const submitBtn = el("button", {type: "button", id: "submit",
+    text: DEV ? "Show submission (test mode)" : "Submit ratings"});
+
+  app.replaceChildren(
+    el("p", {}, el("a", {href: "index.html", text: "← Alliance credibility dashboard"})),
+    DEV ? el("div", {class: "notice warn", text: "Test mode: nothing will be sent."}) : null,
+    el("h1", {text: AL.name}),
+    el("p", {class: "years", text: `${AL.begyr}–${AL.endyr}`}),
+    preamble,
+    el("div", {class: "instructions", text: texts.instructions[AL.instructions]}),
+    el("p", {class: "ui-help", text: "Choose a level for the start year of every question below, " +
+      "then only in years it changed. Click a selected level again to clear it. " +
+      "Your answers are kept in this browser until you submit."}),
+    ...questions, identity, turnstile, status, submitBtn);
+
+  // the sticky column header would otherwise cover a row scrolled to the top of its box
+  // (e.g. when a keyboard user tabs upward); header height varies as labels wrap
+  const padGrids = () => app.querySelectorAll(".grid-wrap").forEach(w => {
+    w.style.scrollPaddingTop = ((w.querySelector("thead")?.offsetHeight || 0) + 4) + "px";
+  });
+  padGrids();
+  window.addEventListener("resize", padGrids);
+
+  wireRadios();
+  restoreDraft();
+  app.addEventListener("input", saveDraft);
+  submitBtn.addEventListener("click", submit);
+}
+
+// radios that can be un-clicked, and "marked" styling for rows with a rating
+function wireRadios() {
+  app.addEventListener("click", e => {
+    const r = e.target;
+    if (!(r instanceof HTMLInputElement) || r.type !== "radio") return;
+    if (r.dataset.on === "1") { r.checked = false; r.dataset.on = ""; }
+    else { app.querySelectorAll(`input[name="${r.name}"]`).forEach(x => x.dataset.on = "");
+           r.dataset.on = "1"; }
+    markRows(); saveDraft();
+  });
+}
+function markRows() {
+  app.querySelectorAll("table.grid tbody tr").forEach(tr =>
+    tr.classList.toggle("marked", !!tr.querySelector("input:checked")));
+}
+
+// ---- payload + checks (mirror validate_submission() in release/contributions/contrib-utils.R)
+function answers() {
+  const out = [];
+  for (const q of AL.questions) for (const y of AL.years) {
+    const s = app.querySelector(`input[name="${q.id}_${y}"]:checked`);
+    if (s) out.push({question: q.id, country: q.country, year: y, level: Number(s.value)});
+  }
+  return out;
+}
+const val = id => (document.getElementById(id)?.value || "").trim();
+function payload() {
+  return {
+    instrument_version: INSTR.instrument_version,
+    atopid: AL.atopid,
+    answers: answers(),
+    contributor: {name: val("c_name"), institution: val("c_inst"), email: val("c_email"),
+                  credit_opt_in: !!document.getElementById("c_credit")?.checked},
+    consent: !!document.getElementById("c_consent")?.checked,
+    comment: val("c_comment"),
+    website: val("c_website"),                                  // honeypot
+    turnstile_token: document.querySelector("[name='cf-turnstile-response']")?.value || ""
+  };
+}
+function problems(p) {
+  const out = [], start = Math.min(...AL.years);
+  for (const q of AL.questions)
+    if (!p.answers.some(a => a.question === q.id && a.year === start))
+      out.push(`${q.heading}: please choose a level for the start year (${start}).`);
+  if (!p.contributor.name) out.push("Please give your name.");
+  if (!p.contributor.institution) out.push("Please give your institution.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(p.contributor.email))
+    out.push("Please give a valid institutional email address.");
+  if (!p.consent) out.push("Please confirm the consent statement.");
+  if (CONFIG.turnstileSiteKey && !p.turnstile_token && !DEV) out.push("Please complete the bot check.");
+  return out;
+}
+
+async function submit() {
+  const status = document.getElementById("status"), btn = document.getElementById("submit");
+  const p = payload(), errs = problems(p);
+  if (errs.length) {
+    status.replaceChildren(el("div", {class: "notice bad"}, "Not sent yet:",
+      el("ul", {}, ...errs.map(t => el("li", {text: t})))));
+    return;
+  }
+  if (DEV) {
+    status.replaceChildren(el("div", {class: "notice good", text: "Valid. This is what would be sent:"}),
+      el("pre", {id: "payload", text: JSON.stringify(record(p), null, 2)}));
+    return;
+  }
+  btn.disabled = true;
+  status.replaceChildren(el("p", {class: "muted", text: "Sending…"}));
+  try {
+    const r = await fetch(CONFIG.apiUrl, {method: "POST",
+      headers: {"content-type": "application/json"}, body: JSON.stringify(p)});
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.ok) throw new Error(body.error || `server said ${r.status}`);
+    clearDraft();
+    status.replaceChildren(el("div", {class: "notice good",
+      text: `Received — thank you. Reference ${body.reference}. We will confirm by email to ` +
+            `${p.contributor.email} after review; accepted ratings appear in the next annual release.`}));
+    btn.remove();
+  } catch (e) {
+    failure(p, e.message);
+    btn.disabled = false;
+  }
+}
+
+// what gets stored = the payload minus the bot-check fields
+function record(p) { const {website, turnstile_token, ...rest} = p; return rest; }
+
+// saving failed: never lose the expert's work
+function failure(p, reason) {
+  const blob = new Blob([JSON.stringify(record(p), null, 2)], {type: "application/json"});
+  const a = el("a", {href: URL.createObjectURL(blob),
+                     download: `alliance-${AL.atopid}-ratings.json`, text: "Download my ratings"});
+  document.getElementById("status").replaceChildren(el("div", {class: "notice bad"},
+    el("p", {text: `Your ratings were NOT saved (${reason}). Nothing is lost: they are still in ` +
+                   "this browser, and you can download them as a file."}),
+    el("p", {}, a, CONFIG.contactEmail ? `  — please email the file to ${CONFIG.contactEmail}.` : "")));
+}
+
+// ---- draft kept in this browser (per alliance and instrument version) ----------------------
+const draftKey = () => `cred-contrib-${AL.atopid}-${INSTR.instrument_version}`;
+function saveDraft() {
+  try {
+    const p = payload();
+    localStorage.setItem(draftKey(), JSON.stringify({answers: p.answers, contributor: p.contributor,
+                                                     comment: p.comment}));
+  } catch (e) { /* storage unavailable: the form still works */ }
+}
+function restoreDraft() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(draftKey()) || "null"); } catch (e) { return; }
+  if (!d) return;
+  for (const a of d.answers || []) {
+    const r = app.querySelector(`input[name="${a.question}_${a.year}"][value="${a.level}"]`);
+    if (r) { r.checked = true; r.dataset.on = "1"; }
+  }
+  const c = d.contributor || {};
+  for (const [id, v] of [["c_name", c.name], ["c_inst", c.institution], ["c_email", c.email],
+                         ["c_comment", d.comment]]) if (v) document.getElementById(id).value = v;
+  if (c.credit_opt_in) document.getElementById("c_credit").checked = true;
+  markRows();
+}
+function clearDraft() { try { localStorage.removeItem(draftKey()); } catch (e) {} }
+</script>
+</body>
+</html>
