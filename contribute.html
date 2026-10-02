@@ -117,7 +117,13 @@ function el(tag, attrs, ...kids) {
   return n;
 }
 
-function fatal(msg) { app.replaceChildren(el("div", {class: "notice bad", text: msg})); }
+function fatal(msg) { show(el("div", {class: "notice bad", text: msg})); }
+
+// replaceChildren() prints a literal "null" for an empty slot (e.g. the test-mode banner when
+// not testing), which caused the stray "null" above the alliance name. Drop empty slots first.
+function show(...kids) {
+  app.replaceChildren(...kids.flat().filter(k => k !== null && k !== undefined && k !== false));
+}
 
 init();
 
@@ -152,7 +158,7 @@ function renderPicker(missingId) {
   }
   input.addEventListener("input", draw);
   draw();
-  app.replaceChildren(
+  show(
     el("p", {}, el("a", {href: "index.html", text: "← Alliance credibility dashboard"})),
     el("h1", {text: "Contribute alliance credibility ratings"}),
     missingId !== null ? el("div", {class: "notice warn",
@@ -224,7 +230,7 @@ function renderForm() {
   const submitBtn = el("button", {type: "button", id: "submit",
     text: DEV ? "Show submission (test mode)" : "Submit ratings"});
 
-  app.replaceChildren(
+  show(
     el("p", {}, el("a", {href: "index.html", text: "← Alliance credibility dashboard"})),
     DEV ? el("div", {class: "notice warn", text: "Test mode: nothing will be sent."}) : null,
     el("h1", {text: AL.name}),
