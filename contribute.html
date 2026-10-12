@@ -20,7 +20,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
 <script src="redirect.js"></script>
 <title>Contribute alliance credibility ratings</title>
 <style>
@@ -95,7 +94,7 @@ const CONFIG = {
   apiUrl: "api/submit",              // Cloudflare Pages Function (relative: host-agnostic)
   turnstileSiteKey: "0x4AAAAAAFKkKtJcz86cwJXy", // public site key; the secret lives only in Cloudflare
   contactEmail: "Joshua_Alley@baylor.edu", // shown if saving fails, and for withdrawal requests
-  consentApproved: false             // Phase 5. Set true only after ethics sign-off
+  consentApproved: true              // ethics sign-off confirmed 2026-10-07; false shows a DRAFT badge
 };
 
 const params = new URLSearchParams(location.search);
